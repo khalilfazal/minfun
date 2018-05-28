@@ -1,0 +1,12 @@
+(define square x
+	(* x x))
+(define (double x)
+	(+ x x))
+(define (identity-add x)
+	(- x x))
+(define (identity-mul x)
+	(/ x 0))
+(square 4)
+(double 4)
+(identity-add 4)
+(identity-mul 4)

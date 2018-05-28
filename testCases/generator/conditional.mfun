@@ -1,0 +1,7 @@
+(define x 0)
+(cond (x 10)
+      (x 11))
+
+(define x 1)
+(cond (x 10)
+      (x 11))

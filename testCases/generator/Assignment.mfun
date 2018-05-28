@@ -1,0 +1,4 @@
+(define x 1)
+x
+(define y 100)
+y

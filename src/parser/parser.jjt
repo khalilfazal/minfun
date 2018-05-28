@@ -1,0 +1,268 @@
+options {
+    STATIC = false;
+}
+
+PARSER_BEGIN(Parser)
+
+package parser;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.PrintStream;
+
+import generator.Generator;
+import main.Exiter;
+import main.Interpreter;
+
+/**
+ * A Scheme compiler
+ * 
+ * @author Khalil Fazal
+ * @student_number 100425046
+ */
+public class Parser {
+
+    /**
+     * Parses the program
+     * 
+     * @param file
+     *            A scheme program file
+     * @return the root node
+     * @throws ParseException
+     *             Used to catch exceptions in JUnit
+     */
+    public static SimpleNode parse(final File file) throws ParseException {
+        SimpleNode root = null;
+        @SuppressWarnings("resource")
+        FileInputStream ifstream = null;
+
+        try {
+            try {
+                ifstream = new FileInputStream(file);
+
+                try {
+                    root = new Parser(ifstream).program();
+                } catch (final TokenMgrError e) {
+                    Exiter.exit(-2, String.format("The file \"%s\" is not lexicographically valid.", file.getPath()));
+                }
+            } finally {
+                if (ifstream != null) {
+                    ifstream.close();
+                }
+            }
+        } catch (final IOException e) {
+            if (file.isFile()) {
+                Exiter.exit(2, String.format("Can not find the file \"%s\".", file.getPath()));
+            } else {
+                Exiter.exit(2, String.format("\"%s\" is not a file.", file.getName()));
+            }
+        }
+
+        return root;
+    }
+    /**
+     * Print the abstract syntax tree
+     * 
+     * @param root the root of the scheme program
+     * @param prefix spacing to display the tree
+     */
+    public static void print_AST(final SimpleNode root, final String prefix) {
+        if (root != null) {
+            if (root.value != null) {
+                System.out.println(prefix + root.value);
+            }
+
+            for (int i = 0; i < root.jjtGetNumChildren(); ++i) {
+                final SimpleNode n = Interpreter.interpret(root.jjtGetChild(i));
+                print_AST(n, prefix + Generator.TAB);
+            }
+        }
+    }
+}  
+
+PARSER_END(Parser)
+
+// Parentheses
+TOKEN: {
+        <T_L: "(" >
+    |   <T_R: ")" >
+}
+
+// Primitive Data Types
+TOKEN: {
+    <T_BOOLEAN:
+            <T_TRUE>
+        |   <T_FALSE>               >
+    |   <#T_TRUE:  "#t"             >
+    |   <#T_FALSE: "#f"             >
+    |   <T_INTEGER: (["0" - "9"])+ >
+}
+
+// Reserved Functions
+TOKEN: {
+        <T_DEFINE: "define" >
+    |   <T_ELSE:   "else"   >
+    |   <T_COND:   "cond"   >
+}
+
+// Binary Operators
+TOKEN: {
+        <T_BINARY:
+                <T_PLUS>
+            |   <T_MINUS>
+            |   <T_TIMES>
+            |   <T_DIVIDE>
+            |   <T_EQUAL>
+            |   <T_LTEQ>
+            |   <T_LT>
+            |   <T_GTEQ>
+            |   <T_GT>      >
+    |   <#T_PLUS:   "+"     >
+    |   <#T_MINUS:  "-"     >
+    |   <#T_TIMES:  "*"     >
+    |   <#T_DIVIDE: "/"     >
+    |   <#T_EQUAL:  "="     >
+    |   <#T_LTEQ:   "<="    >
+    |   <#T_LT:     "<"     >
+    |   <#T_GTEQ:   ">="    >
+    |   <#T_GT:     ">"     >
+}
+
+// Variables
+// Can't start variable with a hyphen
+TOKEN: {
+    <T_VARIABLE: ["_", "a" - "z", "A" - "Z"](["-", "_", "a" - "z", "A" - "Z"])* >
+}
+
+SKIP: {
+        "\t"
+    |   "\n"
+    |   "\r"
+    |   " "
+}
+
+SimpleNode program() #PROGRAM: {} {
+    (sExpression())+ <EOF>
+    
+    {return jjtThis;}
+}
+
+void sExpression() #void: {} {
+    LOOKAHEAD(2)
+    
+        define()
+    |   expression()
+}
+
+void define() #void: {
+    Token s;
+    Token t;
+    Token u;
+} {
+    s = <T_L>
+    t = <T_DEFINE>
+    
+    define_condition()
+    
+    expression()
+    
+    {jjtThis.value = t.image;} #DEFINE(2)
+    
+    u = <T_R>    
+    {jjtThis.value = u.image;} #RIGHT_BRACKET(0)
+    {jjtThis.value = s.image;} #LEFT_BRACKET(2)
+}
+
+void define_condition() #void: {
+    Token s;
+    Token t;
+    Token u;
+    Token v;
+    int arguments = 0;
+} {
+    (
+        t = <T_VARIABLE>
+        {jjtThis.value = t.image;} #VARIABLE(0)
+    ) | (
+        s = <T_L>
+
+        t = <T_VARIABLE> (
+            u = <T_VARIABLE>
+            {
+                jjtThis.value = u.image;
+                arguments++;
+            } #ARGUMENT(0)
+        )+
+        {jjtThis.value = t.image;} #FUNCTION(arguments)
+        
+        v = <T_R>
+        {jjtThis.value = v.image;} #RIGHT_BRACKET(0)
+        {jjtThis.value = s.image;} #LEFT_BRACKET(2)        
+    )
+}
+
+void expression() #void: {
+    Token s;
+    Token t;
+} {
+    (
+        s = <T_VARIABLE>
+        {jjtThis.value = s.image;} #VARIABLE(0)
+    ) | (
+        s = <T_BOOLEAN>
+        {jjtThis.value = s.image.equals("#t");} #BOOLEAN(0)
+    ) | (
+        s = <T_INTEGER>
+        {jjtThis.value = Integer.parseInt(s.image);} #INTEGER(0)
+    ) | (
+        s = <T_L> expression_rest()
+        t = <T_R>
+        
+        {jjtThis.value = t.image;} #RIGHT_BRACKET(0)
+        {jjtThis.value = s.image;} #LEFT_BRACKET(2)                
+    )
+}
+
+void expression_rest() #void: {
+    Token t;
+    int arguments = 0;
+} {
+    (
+        (t = <T_BINARY> | t = <T_VARIABLE>)
+        
+        (expression() {arguments++;})+
+        {jjtThis.value = t.image;} #FUNCTION(arguments)
+    ) | (
+        t = <T_COND> (LOOKAHEAD(2) condition() {arguments++;})*
+        (conditional_terminal() {arguments++;})?
+        {jjtThis.value = t.image;} #CONDITION(arguments)
+    )   
+}
+
+void condition() #void: {
+    Token s;
+    Token t;
+} {
+    s = <T_L> expression() expression()
+    t = <T_R>
+    
+    {jjtThis.value = t.image;} #RIGHT_BRACKET(0)
+    {jjtThis.value = s.image;} #LEFT_BRACKET(3)
+}
+
+void conditional_terminal() #void: {
+    Token s;
+    Token t;
+    Token u;
+} {
+    s = <T_L>
+    t = <T_ELSE>
+    {jjtThis.value = t.image;} #ELSE(0)
+        
+    expression()
+    u = <T_R>
+        
+    {jjtThis.value = u.image;} #RIGHT_BRACKET(0)
+    {jjtThis.value = s.image;} #LEFT_BRACKET(3)
+}
